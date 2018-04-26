@@ -353,7 +353,7 @@ class Vectors(object):
                 itos.append(word)
 
             skip_indices = range(num_lines - skipped, skipped+1)
-            vectors = np.delete(vectors, skip_indices, dim=0)
+            vectors = np.delete(vectors, skip_indices, axis=0)
             self.itos = itos
             self.stoi = {word: i for i, word in enumerate(itos)}
 
