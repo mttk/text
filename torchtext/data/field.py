@@ -306,7 +306,6 @@ class Field(RawField):
                 arr = self.postprocessing(arr, None)
 
         var = torch.tensor(arr, dtype=self.dtype, device=device)
-
         if self.sequential and not self.batch_first:
             var.t_()
         if self.sequential:

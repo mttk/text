@@ -355,7 +355,11 @@ class TestField(TorchtextTestCase):
         int_field = data.Field(sequential=False, use_vocab=False,
                                postprocessing=lambda arr, _: [x + 1 for x in arr])
         float_field = data.Field(sequential=False, use_vocab=False,
+<<<<<<< 7f0ed40229d680e64dc3fefbb39f2dccc255eb07
                                  dtype=torch.float,
+=======
+                                 tensor_type=torch.FloatTensor,
+>>>>>>> Squashed: pytorch 0.4 compatibility fixes
                                  postprocessing=lambda arr, _: [x * 0.5 for x in arr])
         tsv_fields = [("int", int_field), ("float", float_field), ("string", None)]
         tsv_dataset = data.TabularDataset(
