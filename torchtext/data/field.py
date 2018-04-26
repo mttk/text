@@ -665,6 +665,21 @@ class NestedField(Field):
         return padded_batch
 
 
+class MultiField(Field):
+    def __init__(self, fields):
+        self.fields = fields
+
+    def preprocess(self, x):
+        xs = [field.preprocess(x) for field in self.fields]
+        return xs
+
+    def process(self, batch, device=None):
+        tensors = []
+        for idx, field in enumerate(self.fields):
+            sub_batch = [ex[idx] for ex in batch]
+            tensors.append(field.process(sub_batch, device))    
+        return tuple(tensors)
+
 class LabelField(Field):
     """A Label field.
 
