@@ -352,9 +352,11 @@ class Vectors(object):
 
             self.itos = itos
             self.stoi = {word: i for i, word in enumerate(itos)}
+            import numpy as np
             a = np.array(array)
             print(a.size())
-            self.vectors = torch.Tensor(vectors).view(-1, dim)
+            self.vectors = torch.from_numpy(a)
+            #self.vectors = torch.Tensor(vectors).view(-1, dim)
             self.dim = dim
             logger.info('Saving vectors to {}'.format(path_pt))
             if not os.path.exists(cache):
