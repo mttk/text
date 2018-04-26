@@ -352,6 +352,8 @@ class Vectors(object):
 
             self.itos = itos
             self.stoi = {word: i for i, word in enumerate(itos)}
+            a = np.array(array)
+            print(a.size())
             self.vectors = torch.Tensor(vectors).view(-1, dim)
             self.dim = dim
             logger.info('Saving vectors to {}'.format(path_pt))
