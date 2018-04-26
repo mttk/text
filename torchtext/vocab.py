@@ -290,8 +290,8 @@ class Vectors(object):
             # str call is necessary for Python 2/3 compatibility, since
             # argument must be Python 2 str (Python 3 bytes) or
             # Python 3 str (Python 2 unicode)
-            itos, vectors, dim = [], array.array(str('d')), None
-
+            #itos, vectors, dim = [], array.array(str('d')), None
+            itos, vectors, dim = [], [], None
             # Try to read the whole file with utf-8 encoding.
             binary_lines = False
             num_lines = 0
@@ -347,7 +347,7 @@ class Vectors(object):
                     except:
                         logger.info("Skipping non-UTF8 token {}".format(repr(word)))
                         continue
-                vectors.extend(float(x) for x in entries)
+                vectors.append([float(x) for x in entries])
                 itos.append(word)
 
             self.itos = itos
