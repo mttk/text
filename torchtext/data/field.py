@@ -677,8 +677,9 @@ class MultiField(Field):
         tensors = []
         for idx, field in enumerate(self.fields):
             sub_batch = [ex[idx] for ex in batch]
-            tensors.append(field.process(sub_batch, device))    
+            tensors.append(field.process(sub_batch, device))
         return tuple(tensors)
+
 
 class LabelField(Field):
     """A Label field.
