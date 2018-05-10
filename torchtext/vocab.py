@@ -358,7 +358,7 @@ class Vectors(object):
             self.stoi = {word: i for i, word in enumerate(itos)}
 
             print(vectors.size)
-            self.vectors = torch.from_numpy(vectors)
+            self.vectors = torch.as_tensor(vectors)
             #self.vectors = torch.Tensor(vectors).view(-1, dim)
             self.dim = dim
             logger.info('Saving vectors to {}'.format(path_pt))
