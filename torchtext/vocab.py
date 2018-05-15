@@ -7,6 +7,8 @@ import logging
 import os
 import zipfile
 
+import numpy as np
+
 import six
 from six.moves.urllib.request import urlretrieve
 import torch
@@ -29,7 +31,8 @@ class Vocab(object):
         itos: A list of token strings indexed by their numerical identifiers.
     """
     def __init__(self, counter, max_size=None, min_freq=1, specials=['<pad>'],
-                 vectors=None, unk_init=None, vectors_cache=None):
+                 vectors=None, unk_init=None, vectors_cache=None, discard_unused=True,
+                 custom_vocab=None):
         """Create a Vocab object from a collections.Counter.
 
         Arguments:
@@ -45,10 +48,14 @@ class Vocab(object):
             vectors: One of either the available pretrained vectors
                 or custom pretrained vectors (see Vocab.load_vectors);
                 or a list of aforementioned vectors
-            unk_init (callback): by default, initialize out-of-vocabulary word vectors
+            unk_init (callback): By default, initialize out-of-vocabulary word vectors
                 to zero vectors; can be any function that takes in a Tensor and
                 returns a Tensor of the same size. Default: torch.Tensor.zero_
-            vectors_cache: directory for cached vectors. Default: '.vector_cache'
+            vectors_cache: Directory for cached vectors. Default: '.vector_cache'
+            discard_unused: A boolean flag indicating whether the keep only the vectors
+                which are present in the Field's vocabulary. Defaults to True.
+            custom_vocab: A set of strings for which the vectors will be kept. Overrides
+                the behavior set by `discard_unused` if not `None`.
         """
         self.freqs = counter
         counter = counter.copy()
@@ -77,7 +84,16 @@ class Vocab(object):
 
         self.vectors = None
         if vectors is not None:
-            self.load_vectors(vectors, unk_init=unk_init, cache=vectors_cache)
+            if custom_vocab:
+                keep_vectors = custom_vocab  # should check if this is a set
+            elif discard_unused:
+                keep_vectors = set(self.itos)  # for O(1) query
+            else:
+                logger.warning("Choosing to keep all pretrained vectors will" +
+                               " greatly increase memory usage.")
+                keep_vectors = None  # keep all vectors (discouraged)
+            self.load_vectors(vectors, unk_init=unk_init, cache=vectors_cache,
+                              filter_vocab=keep_vectors)
         else:
             assert unk_init is None and vectors_cache is None
 
@@ -221,7 +237,7 @@ class SubwordVocab(Vocab):
 class Vectors(object):
 
     def __init__(self, name, cache=None,
-                 url=None, unk_init=None):
+                 url=None, unk_init=None, filter_vocab=None):
         """
         Arguments:
            name: name of the file that contains the vectors
@@ -233,7 +249,7 @@ class Vectors(object):
          """
         cache = '.vector_cache' if cache is None else cache
         self.unk_init = torch.Tensor.zero_ if unk_init is None else unk_init
-        self.cache(name, cache, url=url)
+        self.cache(name, cache, url=url, filter_vocab=filter_vocab)
 
     def __getitem__(self, token):
         if token in self.stoi:
@@ -241,7 +257,7 @@ class Vectors(object):
         else:
             return self.unk_init(torch.Tensor(1, self.dim))
 
-    def cache(self, name, cache, url=None):
+    def cache(self, name, cache, url=None, filter_vocab=None):
         if os.path.isfile(name):
             path = name
             path_pt = os.path.join(cache, os.path.basename(name)) + '.pt'
@@ -273,38 +289,51 @@ class Vectors(object):
             if not os.path.isfile(path):
                 raise RuntimeError('no vectors found at {}'.format(path))
 
-            # str call is necessary for Python 2/3 compatibility, since
-            # argument must be Python 2 str (Python 3 bytes) or
-            # Python 3 str (Python 2 unicode)
-            itos, vectors, dim = [], array.array(str('d')), None
+
 
             # Try to read the whole file with utf-8 encoding.
             binary_lines = False
+            num_lines = 0
             try:
-                with io.open(path, encoding="utf8") as f:
-                    lines = [line for line in f]
+                # f = io.open(path, encoding="utf8")
+                f = io.open(path, encoding="utf8")
+                # Try iterating over the whole dataset to see
+                # if there are any malformed lines
+                num_lines = _linecount(f)
             # If there are malformed lines, read in binary mode
             # and manually decode each word from utf-8
             except:
                 logger.warning("Could not read {} as UTF8 file, "
                                "reading file as bytes and skipping "
                                "words with malformed UTF8.".format(path))
-                with open(path, 'rb') as f:
-                    lines = [line for line in f]
+                f = open(path, 'rb')
                 binary_lines = True
+                num_lines = _linecount(f)
 
             logger.info("Loading vectors from {}".format(path))
-            for line in tqdm(lines, total=len(lines)):
+
+            # str call is necessary for Python 2/3 compatibility, since
+            # argument must be Python 2 str (Python 3 bytes) or
+            # Python 3 str (Python 2 unicode)
+            dim = _vecdim(f, binary_lines)
+            itos, vectors, skipped = [], np.zeros((num_lines, dim)), 0
+            idx = 0
+            for line in tqdm(f, total=num_lines):
                 # Explicitly splitting on " " is important, so we don't
                 # get rid of Unicode non-breaking spaces in the vectors.
                 entries = line.rstrip().split(b" " if binary_lines else " ")
 
                 word, entries = entries[0], entries[1:]
-                if dim is None and len(entries) > 1:
-                    dim = len(entries)
-                elif len(entries) == 1:
+
+                if filter_vocab:  # Vocab filtering is ON
+                    if word not in filter_vocab:
+                        # Skip entry
+                        continue
+
+                if len(entries) == 1:
                     logger.warning("Skipping token {} with 1-dimensional "
                                    "vector {}; likely a header".format(word, entries))
+                    skipped += 1
                     continue
                 elif dim != len(entries):
                     raise RuntimeError(
@@ -319,12 +348,18 @@ class Vectors(object):
                     except:
                         logger.info("Skipping non-UTF8 token {}".format(repr(word)))
                         continue
-                vectors.extend(float(x) for x in entries)
+                vectors[idx] = np.array([float(x) for x in entries])
+                idx+=1
                 itos.append(word)
 
+            skip_indices = range(num_lines - skipped, skipped+1)
+            vectors = np.delete(vectors, skip_indices, axis=0)
             self.itos = itos
             self.stoi = {word: i for i, word in enumerate(itos)}
-            self.vectors = torch.Tensor(vectors).view(-1, dim)
+
+            print(vectors.size)
+            self.vectors = torch.as_tensor(vectors)
+            #self.vectors = torch.Tensor(vectors).view(-1, dim)
             self.dim = dim
             logger.info('Saving vectors to {}'.format(path_pt))
             if not os.path.exists(cache):
@@ -393,6 +428,26 @@ class CharNGram(Vectors):
 
 def _default_unk_index():
     return 0
+
+
+def _linecount(f):
+    # assumes that f is already an open stream
+    num_lines = 0
+    for line in f:
+        num_lines += 1
+    f.seek(0)
+    return num_lines
+
+
+def _vecdim(f, binary_lines):
+    for line in f:
+        entries = line.rstrip().split(b" " if binary_lines else " ")
+
+        word, entries = entries[0], entries[1:]
+        dim = len(entries)
+        if dim != 1:
+            f.seek(0)
+            return dim
 
 
 pretrained_aliases = {
