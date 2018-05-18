@@ -202,8 +202,10 @@ class Field(RawField):
         if self.fix_length is None:
             max_len = max(len(x) for x in minibatch)
         else:
+            max_in_batch = max(len(x) for x in minibatch)
             max_len = self.fix_length + (
                 self.init_token, self.eos_token).count(None) - 2
+            max_len = min(max_in_batch, max_len)
         padded, lengths = [], []
         for x in minibatch:
             if self.pad_first:
